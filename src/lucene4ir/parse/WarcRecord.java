@@ -1,4 +1,4 @@
-package parse;
+package lucene4ir.parse;
 
 import java.io.IOException;
 import java.io.DataInput;

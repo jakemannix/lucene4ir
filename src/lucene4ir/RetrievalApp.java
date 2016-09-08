@@ -7,15 +7,13 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.search.*;
 import org.apache.lucene.search.similarities.*;
 import org.apache.lucene.search.similarities.LMSimilarity.CollectionModel;
-import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.queryparser.classic.QueryParser;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.document.Document;
 
 /**
@@ -198,6 +196,18 @@ public class RetrievalApp {
         System.out.println("Query No.: " + qno + " " + queryTerms);
         try {
             Query query = parser.parse(queryTerms);
+            
+            String[] terms = queryTerms.split("\\s+");
+            Query queryOrderOne = new CrossFieldPhraseQuery(
+                new TermQuery(new Term("title", terms[0])),
+                new TermQuery(new Term("contents", terms[1])));
+            Query queryOrderTwo = new CrossFieldPhraseQuery(
+                new TermQuery(new Term("contents", terms[0])),
+                new TermQuery(new Term("title", terms[1])));
+            query = new BooleanQuery.Builder()
+                .add(queryOrderOne, BooleanClause.Occur.SHOULD)
+                .add(queryOrderTwo, BooleanClause.Occur.SHOULD)
+                .build();
 
             try {
                 TopDocs results = searcher.search(query, 1000);
