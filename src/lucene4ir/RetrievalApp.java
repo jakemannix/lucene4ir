@@ -196,7 +196,7 @@ public class RetrievalApp {
         System.out.println("Query No.: " + qno + " " + queryTerms);
         try {
             Query query = parser.parse(queryTerms);
-            
+
             String[] terms = queryTerms.split("\\s+");
             Query queryOrderOne = new CrossFieldPhraseQuery(
                 new TermQuery(new Term("title", terms[0])),
