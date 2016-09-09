@@ -8,19 +8,28 @@ import java.util.Set;
 
 public class CrossFieldPhraseQuery extends Query {
 
+  protected TermQuery firstQuery;
+  protected TermQuery secondQuery;
   public CrossFieldPhraseQuery(TermQuery firstQuery, TermQuery secondQuery) {
+    this.firstQuery = firstQuery;
+    this.secondQuery = secondQuery;
 
   }
 
   @Override
   public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
-    return new CrossFieldPhraseWeight(this);
+    return new CrossFieldPhraseWeight(this, searcher, needsScores);
   }
 
   public static class CrossFieldPhraseWeight extends Weight {
 
-    public CrossFieldPhraseWeight(CrossFieldPhraseQuery crossFieldPhraseQuery) {
+    protected Weight firstWeight;
+    protected Weight secondWeight;
+    public CrossFieldPhraseWeight(CrossFieldPhraseQuery crossFieldPhraseQuery,
+                                  IndexSearcher searcher, boolean needsScores) throws IOException {
       super(crossFieldPhraseQuery);
+      firstWeight = crossFieldPhraseQuery.firstQuery.createWeight(searcher, needsScores);
+      secondWeight = crossFieldPhraseQuery.secondQuery.createWeight(searcher, needsScores);
     }
 
     @Override
@@ -45,22 +54,63 @@ public class CrossFieldPhraseQuery extends Query {
 
     @Override
     public Scorer scorer(LeafReaderContext context) throws IOException {
-      return null; // here's where the magic happens
+      return new CrossFieldPhraseScorer(this, context);
     }
 
     public static class CrossFieldPhraseScorer extends Scorer {
 
-      public CrossFieldPhraseScorer(CrossFieldPhraseWeight crossFieldPhraseWeight) {
+      private Scorer firstScorer;
+      private Scorer secondScorer;
+      private DocIdSetIterator mergedIterator;
+
+      public CrossFieldPhraseScorer(CrossFieldPhraseWeight crossFieldPhraseWeight,
+                                    LeafReaderContext context) throws IOException {
         super(crossFieldPhraseWeight);
+        firstScorer = crossFieldPhraseWeight.firstWeight.scorer(context);
+        secondScorer = crossFieldPhraseWeight.secondWeight.scorer(context);
+
+        final DocIdSetIterator firstIterator = firstScorer.iterator();
+        final DocIdSetIterator secondIterator = secondScorer.iterator();
+
+        mergedIterator = new DocIdSetIterator() {
+          @Override
+          public int docID() {
+            return Math.min(firstIterator.docID(), secondIterator.docID());
+          }
+
+          @Override
+          public int nextDoc() throws IOException {
+            int first = firstIterator.docID();
+            int second = secondIterator.docID();
+            if (first < second) {
+              return Math.min(firstIterator.nextDoc(), second);
+            } else if (second < first) {
+              return Math.min(secondIterator.nextDoc(), first);
+            } else {
+              return Math.min(firstIterator.nextDoc(), secondIterator.nextDoc());
+            }
+          }
+
+          @Override
+          public int advance(int target) throws IOException {
+            return Math.min(firstIterator.advance(target), secondIterator.advance(target));
+          }
+
+          @Override
+          public long cost() {
+            return firstIterator.cost() + secondIterator.cost();
+          }
+        };
       }
 
       @Override
       public int docID() {
-        return 0;
+        return mergedIterator.docID();
       }
 
       @Override
       public float score() throws IOException {
+
         return 0;
       }
 
@@ -70,9 +120,7 @@ public class CrossFieldPhraseQuery extends Query {
       }
 
       @Override
-      public DocIdSetIterator iterator() {
-        return null;
-      }
+      public DocIdSetIterator iterator() { return mergedIterator; }
     }
   }
 
